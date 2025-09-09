@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RLabs Security Scanner</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Fira+Code:wght@300;400;500&display=swap');
+
+        :root {
+            --primary-green: #00ff41;
+            --secondary-green: #008f11;
+            --dark-bg: #0d1117;
+            --darker-bg: #010409;
+            --card-bg: #161b22;
+            --border-color: #30363d;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --danger-red: #ff0051;
+            --warning-orange: #ff6b35;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Fira Code', monospace;
+            background: var(--dark-bg);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Animated Background */
+        .background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background: linear-gradient(45deg, var(--darker-bg) 0%, var(--dark-bg) 100%);
+        }
+
+        .background::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle at 20% 80%, rgba(0, 255, 65, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(0, 255, 65, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(0, 255, 65, 0.05) 0%, transparent 50%);
+            animation: pulse 4s ease-in-out infinite alternate;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        /* Matrix-like falling characters */
+        .matrix {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+            opacity: 0.1;
+        }
+
+        .matrix-char {
+            position: absolute;
+            color: var(--primary-green);
+            font-family: 'Fira Code', monospace;
+            font-size: 14px;
+            animation: fall linear infinite;
+        }
+
+        @keyframes fall {
+            0% {
+                transform: translateY(-100vh);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(100vh);
+                opacity: 0;
+            }
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            padding: 2rem 0;
+            position: relative;
+        }
+
+        .logo {
+            font-family: 'Orbitron', monospace;
+            font-size: 3rem;
+            font-weight: 900;
+            background: linear-gradient(45deg, var(--primary-green), var(--secondary-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: 0 0 20px rgba(0, 255, 65, 0.5);
+            margin-bottom: 0.5rem;
+        }
+
+        .tagline {
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            font-weight: 300;
+            letter-spacing: 2px;
+        }
+
+        .tagline::before,
+        .tagline::after {
+            content: '//';
+            color: var(--primary-green);
+            margin: 0 10px;
+        }
+
+        /* Main Container */
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        /* Scan Form */
+        .scan-form {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 2rem 0;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .scan-form::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--primary-green), transparent);
+            animation: scan-line 2s linear infinite;
+        }
+
+        @keyframes scan-line {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            color: var(--primary-green);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
+        }
+
+        .form-input {
+            width: 100%;
+            background: var(--darker-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'Fira Code', monospace;
+            font-size: 1rem;
+            color: var(--text-primary);
+            transition: all 0.3s ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary-green);
+            box-shadow: 0 0 0 2px rgba(0, 255, 65, 0.2);
+            background: rgba(0, 255, 65, 0.05);
+        }
+
+        .form-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        /* Scan Options */
+        .scan-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .option-card {
+            background: var(--darker-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .option-card:hover {
+            border-color: var(--primary-green);
+            background: rgba(0, 255, 65, 0.05);
+        }
+
+        .option-card.selected {
+            border-color: var(--primary-green);
+            background: rgba(0, 255, 65, 0.1);
+        }
+
+        .option-icon {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        .option-title {
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+            color: var(--text-primary);
+        }
+
+        .option-desc {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        /* Submit Button */
+        .submit-btn {
+            width: 100%;
+            background: linear-gradient(45deg, var(--primary-green), var(--secondary-green));
+            border: none;
+            border-radius: 8px;
+            padding: 1rem 2rem;
+            font-family: 'Orbitron', monospace;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--darker-bg);
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 255, 65, 0.4);
+        }
+
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .submit-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.6s;
+        }
+
+        .submit-btn:hover::before {
+            left: 100%;
+        }
+
+        /* Loading Animation */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-color);
+            border-top: 3px solid var(--primary-green);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-family: 'Orbitron', monospace;
+            color: var(--primary-green);
+            font-size: 1.1rem;
+            animation: blink 1.5s infinite;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.5; }
+        }
+
+        /* Results Section */
+        .results {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 2rem 0;
+            display: none;
+        }
+
+        .results.show {
+            display: block;
+        }
+
+        .results-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .results-title {
+            font-family: 'Orbitron', monospace;
+            font-size: 1.8rem;
+            color: var(--primary-green);
+            margin-bottom: 0.5rem;
+        }
+
+        .scan-status {
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: inline-block;
+        }
+
+        .status-success {
+            background: rgba(0, 255, 65, 0.2);
+            color: var(--primary-green);
+            border: 1px solid var(--primary-green);
+        }
+
+        .status-warning {
+            background: rgba(255, 107, 53, 0.2);
+            color: var(--warning-orange);
+            border: 1px solid var(--warning-orange);
+        }
+
+        .status-danger {
+            background: rgba(255, 0, 81, 0.2);
+            color: var(--danger-red);
+            border: 1px solid var(--danger-red);
+        }
+
+        .download-btn {
+            background: var(--darker-bg);
+            border: 1px solid var(--primary-green);
+            border-radius: 8px;
+            padding: 0.8rem 1.5rem;
+            color: var(--primary-green);
+            font-family: 'Fira Code', monospace;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .download-btn:hover {
+            background: var(--primary-green);
+            color: var(--darker-bg);
+        }
+
+        /* Terminal-like output */
+        .terminal {
+            background: var(--darker-bg);
+            border: 2px solid var(--primary-green);
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'Fira Code', monospace;
+            font-size: 1rem;
+            color: var(--primary-green);
+            height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            margin-bottom: 2rem;
+            box-shadow: 0 0 20px rgba(0, 255, 65, 0.3);
+        }
+        
+        .terminal::before {
+            content: '🔍 LIVE SCAN LOGS';
+            display: block;
+            background: var(--primary-green);
+            color: var(--darker-bg);
+            margin: -1rem -1rem 1rem -1rem;
+            padding: 0.5rem 1rem;
+            font-weight: bold;
+            border-radius: 6px 6px 0 0;
+        }
+        
+        .log-success {
+            color: var(--primary-green);
+        }
+        
+        .log-info {
+            color: var(--text-primary);
+        }
+        
+        .log-warning {
+            color: var(--warning-orange);
+        }
+        
+        .log-error {
+            color: var(--danger-red);
+        }
+
+        .terminal::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .terminal::-webkit-scrollbar-track {
+            background: var(--card-bg);
+        }
+
+        .terminal::-webkit-scrollbar-thumb {
+            background: var(--primary-green);
+            border-radius: 4px;
+        }
+
+        .progress-line {
+            color: var(--primary-green);
+            margin: 2px 0;
+        }
+
+        .progress-line::before {
+            content: '[+] ';
+            color: var(--primary-green);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .container {
+                padding: 0 1rem;
+            }
+
+            .logo {
+                font-size: 2rem;
+            }
+
+            .tagline {
+                font-size: 1rem;
+            }
+
+            .scan-options {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="background"></div>
+    <div class="matrix" id="matrix"></div>
+
+    <div class="container">
+        <div class="header">
+            <h1 class="logo">RLABS SECURITY</h1>
+            <p class="tagline">PROFESSIONAL WEB SECURITY SCANNER</p>
+        </div>
+
+        <form class="scan-form" id="scanForm">
+            <div class="form-group">
+                <label class="form-label" for="targetUrl">Target URL</label>
+                <input type="url" id="targetUrl" class="form-input" 
+                       placeholder="https://example.com" 
+                       required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Scan Configuration</label>
+                <div class="scan-options">
+                    <div class="option-card selected" data-option="basic">
+                        <span class="option-icon">🔍</span>
+                        <div class="option-title">Basic Scan</div>
+                        <div class="option-desc">Port scan, headers, SSL</div>
+                    </div>
+                    <div class="option-card" data-option="advanced">
+                        <span class="option-icon">🚀</span>
+                        <div class="option-title">Advanced Scan</div>
+                        <div class="option-desc">Deep analysis + AI recommendations</div>
+                    </div>
+                    <div class="option-card" data-option="stealth">
+                        <span class="option-icon">👻</span>
+                        <div class="option-title">Stealth Mode</div>
+                        <div class="option-desc">Low profile scanning</div>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="submit-btn" id="submitBtn">
+                <span>Initiate Security Scan</span>
+            </button>
+        </form>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <div class="loading-text" id="loadingText">Initializing security scan...</div>
+        </div>
+
+        <div class="results" id="results">
+            <div class="results-header">
+                <h2 class="results-title">Scan Complete</h2>
+                <div class="scan-status status-success" id="scanStatus">Security Assessment Complete</div>
+            </div>
+            
+            <div class="terminal" id="terminal">
+                <!-- Scan logs will be displayed here -->
+            </div>
+            
+            <div style="text-align: center;">
+                <a href="#" class="download-btn" id="downloadBtn">
+                    📄 Download PDF Report
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Socket.IO
+        const socket = io();
+        let currentScanId = null;
+
+        // Matrix effect
+        function createMatrixEffect() {
+            const matrix = document.getElementById('matrix');
+            const chars = '01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン';
+            
+            function createChar() {
+                const char = document.createElement('div');
+                char.className = 'matrix-char';
+                char.textContent = chars[Math.floor(Math.random() * chars.length)];
+                char.style.left = Math.random() * 100 + '%';
+                char.style.animationDuration = (Math.random() * 3 + 2) + 's';
+                matrix.appendChild(char);
+                
+                setTimeout(() => {
+                    char.remove();
+                }, 5000);
+            }
+            
+            setInterval(createChar, 100);
+        }
+        createMatrixEffect();
+
+        // Form elements
+        const scanForm = document.getElementById('scanForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const loading = document.getElementById('loading');
+        const results = document.getElementById('results');
+        const terminal = document.getElementById('terminal');
+        const loadingText = document.getElementById('loadingText');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        // Option selection
+        document.querySelectorAll('.option-card').forEach(card => {
+            card.addEventListener('click', () => {
+                document.querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+            });
+        });
+
+        // Socket event listeners
+        socket.on('scan_progress', (data) => {
+            const progressLine = document.createElement('div');
+            progressLine.className = `progress-line log-${(data.level || 'info').toLowerCase()}`;
+            progressLine.innerHTML = `<strong style="color: var(--warning-orange);">[${data.timestamp}]</strong> ${data.message}`;
+            progressLine.style.animation = 'slideIn 0.3s ease-out';
+            progressLine.style.borderLeft = '3px solid var(--primary-green)';
+            progressLine.style.paddingLeft = '8px';
+            progressLine.style.margin = '4px 0';
+            progressLine.style.background = 'rgba(0, 255, 65, 0.05)';
+            terminal.appendChild(progressLine);
+            terminal.scrollTop = terminal.scrollHeight;
+        });
+
+        socket.on('scan_complete', (data) => {
+            loading.classList.remove('show');
+            results.classList.add('show');
+            submitBtn.disabled = false;
+            
+            const summary = data.summary;
+            
+            // Update status based on risk level
+            const statusElement = document.getElementById('scanStatus');
+            const riskLevel = summary.risk_level || 'Unknown';
+            statusElement.textContent = `Security Assessment Complete - ${riskLevel} Risk`;
+            
+            if (riskLevel === 'Low') {
+                statusElement.className = 'scan-status status-success';
+            } else if (riskLevel === 'Medium') {
+                statusElement.className = 'scan-status status-warning';
+            } else {
+                statusElement.className = 'scan-status status-danger';
+            }
+            
+            // Add final summary to terminal
+            const summaryText = `
+==================================================
+SCAN COMPLETED SUCCESSFULLY
+==================================================
+Target: ${summary.target}
+Security Score: ${summary.security_score}/100
+Risk Level: ${summary.risk_level}
+Open Ports Found: ${summary.open_ports}
+Recommendations: ${summary.recommendations}
+
+📄 PDF Report Generated - Ready for Download!
+==================================================
+            `;
+            
+            const summaryLine = document.createElement('div');
+            summaryLine.className = 'log-success';
+            summaryLine.textContent = summaryText;
+            summaryLine.style.borderTop = '1px solid var(--border-color)';
+            summaryLine.style.paddingTop = '1rem';
+            summaryLine.style.marginTop = '1rem';
+            terminal.appendChild(summaryLine);
+            terminal.scrollTop = terminal.scrollHeight;
+            
+            // Update download button
+            downloadBtn.href = data.download_url;
+        });
+
+        socket.on('scan_error', (data) => {
+            loading.classList.remove('show');
+            submitBtn.disabled = false;
+            
+            const errorLine = document.createElement('div');
+            errorLine.style.color = 'var(--danger-red)';
+            errorLine.textContent = `ERROR: ${data.error}`;
+            terminal.appendChild(errorLine);
+            terminal.scrollTop = terminal.scrollHeight;
+        });
+
+        // Form submission
+        scanForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const targetUrl = document.getElementById('targetUrl').value;
+            const selectedOption = document.querySelector('.option-card.selected').dataset.option;
+            
+            // Show terminal and results immediately
+            terminal.innerHTML = '<div style="color: var(--primary-green); font-weight: bold;">🚀 Initializing scan...</div>';
+            results.classList.add('show');
+            loading.classList.add('show');
+            submitBtn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/scan', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        url: targetUrl,
+                        type: selectedOption
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    currentScanId = data.scan_id;
+                    socket.emit('join_scan', { scan_id: currentScanId });
+                    loadingText.textContent = 'Security scan initiated...';
+                    
+                    // Clear initialization message
+                    setTimeout(() => {
+                        if (terminal.innerHTML.includes('Initializing scan')) {
+                            terminal.innerHTML = '';
+                        }
+                    }, 1000);
+                } else {
+                    throw new Error(data.error || 'Scan failed to start');
+                }
+                
+            } catch (error) {
+                loading.classList.remove('show');
+                results.classList.remove('show');
+                submitBtn.disabled = false;
+                alert(`Error starting scan: ${error.message}`);
+            }
+        });
+
+        // Download button handler
+        downloadBtn.addEventListener('click', (e) => {
+            if (!downloadBtn.href || downloadBtn.href === '#') {
+                e.preventDefault();
+                alert('Report not ready for download yet.');
+            }
+        });
+    </script>
+</body>
+</html>
